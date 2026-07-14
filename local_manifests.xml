@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+    <!-- Device Tree -->
+    <project path="device/realme/r5x" name="Justabalak/android_device_realme_r5x" revision="Backup" />
+    
+    <!-- Kernel -->
+    <project path="kernel/realme/r5x" name="Amritorock/kernel_realme_sm6125" revision="HEAD" />
+    
+    <!-- Vendor -->
+    <project path="vendor/realme/r5x" name="Amritorock/vendor_realme_r5x" revision="HEAD" />
+</manifest>
