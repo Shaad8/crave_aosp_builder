@@ -1,0 +1,118 @@
+name: PixelOS r5x Builder
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_project:
+        description: "Base Project"
+        required: true
+        default: "PixelOS"
+        type: choice
+        options:
+          - PixelOS
+      repo_init:
+        description: "Repo init Command"
+        required: true
+        default: "repo init -u https://github.com/PixelOS-AOSP/android_manifest.git -b sixteen-qpr2 --git-lfs"
+      device_name:
+        description: "Device Name"
+        required: true
+        default: "r5x"
+      product_name:
+        description: "Product Name"
+        required: true
+        default: "r5x"
+      build_command:
+        description: "Build Command"
+        required: true
+        default: "m pixelos"
+      build_type:
+        description: "Build Type"
+        required: true
+        default: "user"
+        type: choice
+        options:
+          - user
+          - userdebug
+          - eng
+      clean_build:
+        description: "Clean Build (fresh sources)"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up build environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git curl wget python3
+
+      - name: Download crave
+        run: |
+          mkdir -p ~/bin
+          curl -o ~/bin/crave https://releases.crave.io/crave_latest_linux_amd64
+          chmod +x ~/bin/crave
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Configure crave
+        run: |
+          mkdir -p ~/.config/crave
+          cat > ~/.config/crave/crave.conf << EOF
+          {
+            "username": "${{ secrets.CRAVE_USERNAME }}",
+            "headers": {
+              "Content-Type": "application/json",
+              "Authorization": "${{ secrets.CRAVE_TOKEN }}",
+              "User-Agent": "Crave"
+            },
+            "projects": [],
+            "server": "https://foss.crave.io/api"
+          }
+          EOF
+
+      - name: Clean workspace (if clean build enabled)
+        if: github.event.inputs.clean_build == 'true'
+        run: crave clean -P ${{ github.event.inputs.base_project }}
+
+      - name: Initialize repo
+        run: |
+          crave run -P ${{ github.event.inputs.base_project }} -- repo init -u https://github.com/PixelOS-AOSP/android_manifest.git -b sixteen-qpr2 --git-lfs
+
+      - name: Sync repo
+        run: |
+          crave run -P ${{ github.event.inputs.base_project }} -- repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync -j8
+
+      - name: Clone device trees
+        run: |
+          crave run -P ${{ github.event.inputs.base_project }} -- bash -c '
+            git clone -b Backup https://github.com/Justabalak/android_device_realme_r5x device/realme/r5x
+            git clone https://github.com/Amritorock/kernel_realme_sm6125 kernel/realme/r5x
+            git clone https://github.com/Amritorock/vendor_realme_r5x vendor/realme/r5x
+          '
+
+      - name: Build PixelOS
+        run: |
+          crave run -P ${{ github.event.inputs.base_project }} -- bash -c '
+            source build/envsetup.sh
+            breakfast ${{ github.event.inputs.device_name }} ${{ github.event.inputs.build_type }}
+            ${{ github.event.inputs.build_command }}
+          '
+
+      - name: Upload build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixelos-r5x-build
+          path: |
+            out/target/product/r5x/*.zip
+            out/target/product/r5x/*.img
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "Build failed! Check logs above for details."
